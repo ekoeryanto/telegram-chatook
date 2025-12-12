@@ -1,12 +1,8 @@
-import * as dotenv from "dotenv";
 import pino from "pino";
 import { db, dbPing } from "./db/knex.js";
 import { startTelegram } from "./telegram/client.js";
 import { createServer } from "./server.js";
 import { createChatwootAPI } from "./chatwoot/api.js";
-
-// Load environment variables
-dotenv.config();
 
 // Initialize logger
 const logger = pino({
