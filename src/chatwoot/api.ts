@@ -145,53 +145,55 @@ export class ChatwootAPI {
   }
 
   async createConversation(data: { contact_id: string; inbox_id: string; source_id?: string }): Promise<any> {
-    // Try to find existing conversation for this contact + inbox to avoid duplicates
     const contactIdNum = parseInt(data.contact_id);
     const inboxIdNum = parseInt(data.inbox_id);
-    
-    try {
-      console.log(`[Chatwoot Debug] Looking for existing conversation: contact_id=${contactIdNum}, inbox_id=${inboxIdNum}`);
-      
-      // Try listing conversations for the inbox
-      const existingList = await this.request(
-        `/api/v1/accounts/${this.config.accountId}/conversations?inbox_id=${inboxIdNum}`
-      );
-      
-      console.log(`[Chatwoot Debug] Raw response from /conversations:`, JSON.stringify(existingList).substring(0, 500));
-      
-      // Parse the response and filter locally
-      let conversations: any[] = [];
-      if (Array.isArray(existingList)) {
-        conversations = existingList;
-      } else if (Array.isArray(existingList?.data?.payload)) {
-        conversations = existingList.data.payload;
-      } else if (existingList?.conversations) {
-        conversations = existingList.conversations;
-      } else if (Array.isArray(existingList?.data)) {
-        conversations = existingList.data;
-      } else if (Array.isArray(existingList?.payload)) {
-        conversations = existingList.payload;
+
+    const parseConversations = (raw: any): any[] => {
+      if (Array.isArray(raw)) return raw;
+      if (Array.isArray(raw?.data?.payload)) return raw.data.payload;
+      if (Array.isArray(raw?.payload)) return raw.payload;
+      if (Array.isArray(raw?.data)) return raw.data;
+      if (Array.isArray(raw?.conversations)) return raw.conversations;
+      if (Array.isArray(raw?.meta?.payload)) return raw.meta.payload;
+      return [];
+    };
+
+    const matchesContact = (conv: any): boolean => {
+      const convContactId = conv.contact_id || conv.contact?.id || conv.meta?.sender?.id;
+      const isMatch = convContactId === contactIdNum;
+      if (isMatch) {
+        console.log(
+          `[Chatwoot Debug] ✅ FOUND MATCH: conversation ${conv.id} for contact ${contactIdNum} (contact_id=${conv.contact_id}, contact.id=${conv.contact?.id}, meta.sender.id=${conv.meta?.sender?.id})`
+        );
       }
-      
-      console.log(`[Chatwoot Debug] Parsed ${conversations.length} conversations from response`);
-      
-      // Filter locally to find matching contact
-      const existing = conversations.find((conv: any) => {
-        const convContactId = conv.contact_id || conv.contact?.id || conv.meta?.sender?.id;
-        console.log(`[Chatwoot Debug] Conv object keys:`, Object.keys(conv).slice(0, 10));
-        console.log(`[Chatwoot Debug] Checking conversation ${conv.id}: contact_id=${convContactId} (from contact_id=${conv.contact_id}, contact.id=${conv.contact?.id}, meta.sender.id=${conv.meta?.sender?.id}) vs searching=${contactIdNum}`);
-        const isMatch = convContactId === contactIdNum;
-        if (isMatch) {
-          console.log(`[Chatwoot Debug] ✅ FOUND MATCH: conversation ${conv.id} for contact ${contactIdNum}`);
-        }
-        return isMatch;
-      });
-      
+      return isMatch;
+    };
+
+    const findExistingByContact = async (): Promise<any | undefined> => {
+      // Pagination to cover closed conversations; stop after 5 pages or when empty page is returned
+      for (let page = 1; page <= 5; page++) {
+        const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?inbox_id=${inboxIdNum}&status=all&page=${page}`;
+        console.log(`[Chatwoot Debug] Fetching conversations page=${page} for inbox_id=${inboxIdNum}`);
+        const list = await this.request(endpoint);
+        const conversations = parseConversations(list);
+        console.log(`[Chatwoot Debug] Page=${page} parsed ${conversations.length} conversations`);
+
+        const existing = conversations.find(matchesContact);
+        if (existing) return existing;
+        if (!conversations.length) break;
+      }
+      return undefined;
+    };
+
+    try {
+      console.log(
+        `[Chatwoot Debug] Looking for existing conversation: contact_id=${contactIdNum}, inbox_id=${inboxIdNum}`
+      );
+      const existing = await findExistingByContact();
       if (existing) {
         console.log(`[Chatwoot Debug] Returning existing conversation: ${existing.id}`);
         return existing;
       }
-      
       console.log(`[Chatwoot Debug] No existing conversation found, will create new one`);
     } catch (e: any) {
       console.log(`[Chatwoot Debug] Error listing conversations:`, e.message);
@@ -237,27 +239,52 @@ export class ChatwootAPI {
       
       if (createErr.status === 422 && isSourceIdError) {
         console.log(`[Chatwoot Debug] source_id conflict detected, searching for existing conversation by source_id`);
+        const matchesSourceId = (conv: any): boolean => {
+          const cid =
+            conv.source_id ||
+            conv.contact_inbox?.source_id ||
+            conv.additional_attributes?.source_id ||
+            conv.meta?.sender?.additional_attributes?.source_id;
+          const isMatch = cid === data.source_id;
+          if (isMatch) {
+            console.log(`[Chatwoot Debug] ✅ FOUND MATCH by source_id in conversation ${conv.id}`);
+          }
+          return isMatch;
+        };
+
         try {
-          // List all conversations (without inbox filter) to find the one with this source_id
-          const allConversations = await this.request(
-            `/api/v1/accounts/${this.config.accountId}/conversations`
-          );
-          let convList: any[] = [];
-          if (Array.isArray(allConversations?.data?.payload)) {
-            convList = allConversations.data.payload;
-          } else if (Array.isArray(allConversations?.payload)) {
-            convList = allConversations.payload;
+          // Paginate through conversations to find the matching source_id (include closed conversations)
+          for (let page = 1; page <= 5; page++) {
+            const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?status=all&page=${page}`;
+            const list = await this.request(endpoint);
+            const convList = parseConversations(list);
+            console.log(
+              `[Chatwoot Debug] Source search page=${page} parsed ${convList.length} conversations (looking for ${data.source_id})`
+            );
+
+            const existing = convList.find(matchesSourceId);
+            if (existing) return existing;
+            if (!convList.length) break;
           }
 
-          const existing = convList.find((c: any) => {
-            const cid = c.source_id || c.contact_inbox?.source_id || c.additional_attributes?.source_id;
-            return cid === data.source_id;
-          });
-          if (existing) {
-            console.log(`[Chatwoot Debug] Found existing conversation by source_id (checked multiple fields):`, existing.id);
-            return existing;
+          // Fallback: try conversations filtered by contact to reduce page scanning
+          try {
+            const byContact = await this.request(
+              `/api/v1/accounts/${this.config.accountId}/conversations?contact_id=${contactIdNum}&status=all`
+            );
+            const convList = parseConversations(byContact);
+            console.log(
+              `[Chatwoot Debug] Source search via contact_id parsed ${convList.length} conversations for contact ${contactIdNum}`
+            );
+            const existing = convList.find(matchesSourceId);
+            if (existing) return existing;
+          } catch (contactSearchErr) {
+            console.log(`[Chatwoot Debug] Contact_id search failed:`, contactSearchErr);
           }
-          console.log(`[Chatwoot Debug] No conversation found with source_id=${data.source_id}, searched ${convList.length} conversations`);
+
+          console.log(
+            `[Chatwoot Debug] No conversation found with source_id=${data.source_id} after paginated search and contact filter`
+          );
         } catch (searchErr) {
           console.log(`[Chatwoot Debug] Failed to search for existing conversation:`, searchErr);
         }
