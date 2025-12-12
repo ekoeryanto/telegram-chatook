@@ -206,26 +206,54 @@ export class ChatwootAPI {
 
     console.log(`[Chatwoot Debug] Creating new conversation with body:`, body);
     
-    const response = await this.request(`/api/v1/accounts/${this.config.accountId}/conversations`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+    try {
+      const response = await this.request(`/api/v1/accounts/${this.config.accountId}/conversations`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
 
-    if (response.conversation) {
-      console.log(`[Chatwoot Debug] Created conversation:`, response.conversation.id);
-      return response.conversation;
-    }
-    if (response.payload?.conversation) {
-      console.log(`[Chatwoot Debug] Created conversation:`, response.payload.conversation.id);
-      return response.payload.conversation;
-    }
-    if (response.id) {
-      console.log(`[Chatwoot Debug] Created conversation:`, response.id);
-      return response;
-    }
+      if (response.conversation) {
+        console.log(`[Chatwoot Debug] Created conversation:`, response.conversation.id);
+        return response.conversation;
+      }
+      if (response.payload?.conversation) {
+        console.log(`[Chatwoot Debug] Created conversation:`, response.payload.conversation.id);
+        return response.payload.conversation;
+      }
+      if (response.id) {
+        console.log(`[Chatwoot Debug] Created conversation:`, response.id);
+        return response;
+      }
 
-    console.error("[Chatwoot Debug] Unexpected conversation response", response);
-    throw new Error("Unexpected conversation response");
+      console.error("[Chatwoot Debug] Unexpected conversation response", response);
+      throw new Error("Unexpected conversation response");
+    } catch (createErr: any) {
+      // If source_id already exists, search for the existing conversation
+      if (createErr.message?.includes("422") && createErr.message?.includes("source_id")) {
+        console.log(`[Chatwoot Debug] source_id conflict detected, searching for existing conversation by source_id`);
+        try {
+          // List all conversations and search for one with this source_id
+          const allConversations = await this.request(
+            `/api/v1/accounts/${this.config.accountId}/conversations?inbox_id=${inboxIdNum}`
+          );
+          let convList: any[] = [];
+          if (Array.isArray(allConversations?.data?.payload)) {
+            convList = allConversations.data.payload;
+          } else if (Array.isArray(allConversations?.payload)) {
+            convList = allConversations.payload;
+          }
+          
+          const existing = convList.find((c: any) => c.source_id === data.source_id);
+          if (existing) {
+            console.log(`[Chatwoot Debug] Found existing conversation by source_id:`, existing.id);
+            return existing;
+          }
+        } catch (searchErr) {
+          console.log(`[Chatwoot Debug] Failed to search for existing conversation:`, searchErr);
+        }
+      }
+      throw createErr;
+    }
   }
 
   async createMessage(conversationId: string, data: { content: string; message_type?: string; private?: boolean }): Promise<any> {

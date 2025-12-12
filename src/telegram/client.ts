@@ -114,10 +114,12 @@ async function forwardToCharwoot(
       const currentName: string | undefined = contact?.name || contact?.contact?.name;
       const currentPhone: string | undefined = contact?.phone_number || contact?.contact?.phone_number;
       const desiredName = fullName;
-      const desiredPhone = phone || "";
+      // Only send phone if non-empty and in E.164 format (starts with +)
+      const desiredPhone = (phone || "").trim();
+      const isValidPhone = desiredPhone && desiredPhone.startsWith("+");
 
       const needsNameUpdate = !!desiredName && desiredName.trim() && desiredName.trim() !== (currentName || "").trim();
-      const needsPhoneUpdate = !!desiredPhone && desiredPhone.trim() && desiredPhone.trim() !== (currentPhone || "").trim();
+      const needsPhoneUpdate = !!isValidPhone && desiredPhone !== (currentPhone || "").trim();
 
       if (needsNameUpdate || needsPhoneUpdate) {
         logger.info({ contactId, needsNameUpdate, needsPhoneUpdate }, "Updating existing Chatwoot contact");
