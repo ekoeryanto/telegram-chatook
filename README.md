@@ -2,7 +2,12 @@
 
 A runnable boilerplate for bridging Telegram and Chatwoot, built with Bun + TypeScript + Elysia.
 
-**⚠️ Note:** This is scaffolding only. No forwarding logic is implemented yet.
+**Status:** Bidirectional forwarding implemented.
+
+- Telegram → Chatwoot: incoming private messages create/find contact + conversation and post messages.
+- Chatwoot → Telegram: outgoing messages (via webhook) are forwarded back to the original Telegram user.
+- Conversation de-duplication: lists inbox conversations and filters locally; sets `source_id` to `telegram_{id}`.
+- Contact sync: updates Chatwoot contact name/phone when Telegram profile changes.
 
 ## Features
 
@@ -82,6 +87,29 @@ Once running, test the following endpoints:
 - **Get customer by ID:** `GET http://localhost:3000/db/customer/1`
 - **Chatwoot webhook:** `POST http://localhost:3000/webhooks/chatwoot`
 
+### Secure Telegram Channel/Chat Sender
+
+- **Send to channel/chat:** `POST http://localhost:3000/telegram/send-channel`
+- Requires header: `Authorization: Bearer <API_BEARER_TOKEN>`
+
+Example (public channel by handle):
+
+```bash
+curl -X POST http://localhost:3000/telegram/send-channel \
+	-H "Authorization: Bearer $API_BEARER_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"channel":"mychannelhandle","message":"Hello channel!"}'
+```
+
+Example (chat/channel by id string):
+
+```bash
+curl -X POST http://localhost:3000/telegram/send-channel \
+	-H "Authorization: Bearer $API_BEARER_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"channel":"1234567890","message":"Hello by ID!"}'
+```
+
 If `API_BEARER_TOKEN` is set, include header: `Authorization: Bearer <token>`
 
 ## Project Structure
@@ -152,7 +180,7 @@ Copy the public URL provided by the tunnel service (e.g., `https://abc123.tryclo
 
 To receive Chatwoot webhooks:
 
-1. Set `CHATWOOT_WEBHOOK_TOKEN` in your `.env`
+1. Set `CHATWOOT_WEBHOOK_TOKEN` in your `.env` (required to validate incoming webhooks)
 2. In Chatwoot admin, configure webhook URL: `https://your-tunnel-url.com/webhooks/chatwoot`
 3. Add custom header: `x-webhook-token: <your-token>`
 
@@ -169,20 +197,26 @@ docker build -t telegram-chatwoot .
 docker run -p 3000:3000 --env-file .env telegram-chatwoot
 ```
 
+## Security Notes
+
+- Do not commit `.env`. It is ignored via `.gitignore`.
+- Chatwoot REST calls use `api_access_token` per-request.
+- Webhooks must include `x-webhook-token` that matches `CHATWOOT_WEBHOOK_TOKEN`.
+- `POST /telegram/send-channel` always requires `Authorization: Bearer <API_BEARER_TOKEN>`. If the token is not configured, the route refuses usage.
+
 ## Development Notes
 
 - All database queries use Knex parameterized queries (no SQL injection risk)
-- Telegram messages are logged but not forwarded yet
-- Chatwoot webhooks are validated and logged but not processed
-- Bearer auth is optional and skipped for `/healthz`
+- Telegram and Chatwoot forwarding are active.
+- Webhooks are validated and fetch conversation details when `source_id` is missing.
+- Bearer auth is optional globally but enforced on `/telegram/send-channel`.
 
-## Next Steps (Not Implemented)
+## Next Steps
 
-- [ ] Telegram → Chatwoot message forwarding
-- [ ] Chatwoot → Telegram message forwarding
-- [ ] Contact/conversation mapping logic
-- [ ] Media handling
-- [ ] Error recovery and retry logic
+- [ ] Media handling (photos, documents)
+- [ ] Rich formatting
+- [ ] Robust retry/backoff
+- [ ] Optional polling fallback when webhook/tunnel is down
 
 ## License
 
