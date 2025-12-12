@@ -44,7 +44,10 @@ export class ChatwootAPI {
           statusText: response.statusText,
           data,
         });
-        throw new Error(`Chatwoot API error: ${response.status} ${response.statusText}`);
+        const error = new Error(`Chatwoot API error: ${response.status} ${response.statusText}`) as any;
+        error.status = response.status;
+        error.data = data;
+        throw error;
       }
 
       return data;
@@ -229,7 +232,10 @@ export class ChatwootAPI {
       throw new Error("Unexpected conversation response");
     } catch (createErr: any) {
       // If source_id already exists, search for the existing conversation
-      if (createErr.message?.includes("422") && createErr.message?.includes("source_id")) {
+      const errorData = createErr?.data;
+      const isSourceIdError = errorData?.error?.includes("source_id") || errorData?.message?.includes("source_id");
+      
+      if (createErr.status === 422 && isSourceIdError) {
         console.log(`[Chatwoot Debug] source_id conflict detected, searching for existing conversation by source_id`);
         try {
           // List all conversations and search for one with this source_id
