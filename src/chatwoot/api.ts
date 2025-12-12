@@ -267,6 +267,31 @@ export class ChatwootAPI {
             if (!convList.length) break;
           }
 
+          // Deep scan: fetch individual conversation details to inspect hidden fields
+          console.log(`[Chatwoot Debug] Starting deep scan of conversation details for source_id lookup`);
+          for (let page = 1; page <= 5; page++) {
+            const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?status=all&page=${page}`;
+            const list = await this.request(endpoint);
+            const convList = parseConversations(list);
+            for (const c of convList) {
+              try {
+                const detail = await this.getConversation(String(c.id));
+                const cid =
+                  detail?.source_id ||
+                  detail?.additional_attributes?.source_id ||
+                  detail?.contact_inbox?.source_id ||
+                  detail?.meta?.sender?.additional_attributes?.source_id;
+                if (cid === data.source_id) {
+                  console.log(`[Chatwoot Debug] ✅ FOUND MATCH in details: conversation ${detail.id}`);
+                  return detail;
+                }
+              } catch (dErr: any) {
+                console.log(`[Chatwoot Debug] Detail fetch failed for conv ${c.id}:`, dErr?.message || dErr);
+              }
+            }
+            if (!convList.length) break;
+          }
+
           // Fallback: try conversations filtered by contact to reduce page scanning
           try {
             const byContact = await this.request(
@@ -276,8 +301,26 @@ export class ChatwootAPI {
             console.log(
               `[Chatwoot Debug] Source search via contact_id parsed ${convList.length} conversations for contact ${contactIdNum}`
             );
+            // First try lightweight check
             const existing = convList.find(matchesSourceId);
             if (existing) return existing;
+            // Then deep check details for this contact's conversations
+            for (const c of convList) {
+              try {
+                const detail = await this.getConversation(String(c.id));
+                const cid =
+                  detail?.source_id ||
+                  detail?.additional_attributes?.source_id ||
+                  detail?.contact_inbox?.source_id ||
+                  detail?.meta?.sender?.additional_attributes?.source_id;
+                if (cid === data.source_id) {
+                  console.log(`[Chatwoot Debug] ✅ FOUND MATCH in contact details: conversation ${detail.id}`);
+                  return detail;
+                }
+              } catch (dErr: any) {
+                console.log(`[Chatwoot Debug] Detail fetch (by contact) failed for conv ${c.id}:`, dErr?.message || dErr);
+              }
+            }
           } catch (contactSearchErr) {
             console.log(`[Chatwoot Debug] Contact_id search failed:`, contactSearchErr);
           }
@@ -287,6 +330,29 @@ export class ChatwootAPI {
           );
         } catch (searchErr) {
           console.log(`[Chatwoot Debug] Failed to search for existing conversation:`, searchErr);
+        }
+
+        // Last resort: attempt to create conversation without source_id to avoid hard failure
+        try {
+          console.warn(
+            `[Chatwoot Debug] WARN: Could not locate existing conversation by source_id. Retrying creation without source_id to proceed.`
+          );
+          const fallbackBody = {
+            contact_id: contactIdNum,
+            inbox_id: inboxIdNum,
+            // source_id intentionally omitted
+          } as any;
+          const resp = await this.request(`/api/v1/accounts/${this.config.accountId}/conversations`, {
+            method: "POST",
+            body: JSON.stringify(fallbackBody),
+          });
+          const conv = resp.conversation || resp.payload?.conversation || resp;
+          if (conv?.id) {
+            console.log(`[Chatwoot Debug] Created conversation without source_id as fallback: ${conv.id}`);
+            return conv;
+          }
+        } catch (fallbackErr: any) {
+          console.log(`[Chatwoot Debug] Fallback creation without source_id failed:`, fallbackErr?.message || fallbackErr);
         }
       }
       throw createErr;
