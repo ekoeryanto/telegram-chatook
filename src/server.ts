@@ -38,8 +38,8 @@ export function createServer(logger: Logger, telegramClient?: TelegramClientType
   // Bearer auth middleware (applied conditionally)
   if (process.env.API_BEARER_TOKEN) {
     app.use(bearer()).derive(({ bearer, path }) => {
-      // Skip auth for healthz endpoint
-      if (path === "/healthz") {
+      // Skip auth for healthz and webhook endpoints (webhooks use their own token)
+      if (path === "/healthz" || path === "/webhooks/chatwoot") {
         return {};
       }
 
