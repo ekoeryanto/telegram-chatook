@@ -341,6 +341,9 @@ export class ChatwootAPI {
             contact_id: contactIdNum,
             inbox_id: inboxIdNum,
             // source_id intentionally omitted
+            additional_attributes: {
+              source_id: data.source_id,
+            },
           } as any;
           const resp = await this.request(`/api/v1/accounts/${this.config.accountId}/conversations`, {
             method: "POST",
