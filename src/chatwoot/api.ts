@@ -248,10 +248,13 @@ export class ChatwootAPI {
           } else if (Array.isArray(allConversations?.payload)) {
             convList = allConversations.payload;
           }
-          
-          const existing = convList.find((c: any) => c.source_id === data.source_id);
+
+          const existing = convList.find((c: any) => {
+            const cid = c.source_id || c.contact_inbox?.source_id || c.additional_attributes?.source_id;
+            return cid === data.source_id;
+          });
           if (existing) {
-            console.log(`[Chatwoot Debug] Found existing conversation by source_id:`, existing.id);
+            console.log(`[Chatwoot Debug] Found existing conversation by source_id (checked multiple fields):`, existing.id);
             return existing;
           }
           console.log(`[Chatwoot Debug] No conversation found with source_id=${data.source_id}, searched ${convList.length} conversations`);
