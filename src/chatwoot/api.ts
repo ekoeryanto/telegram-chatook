@@ -68,6 +68,26 @@ export class ChatwootAPI {
     return this.request(`/api/v1/accounts/${this.config.accountId}/conversations/${conversationId}`);
   }
 
+  async updateConversation(
+    conversationId: string | number,
+    data: { additional_attributes?: Record<string, any> }
+  ): Promise<any> {
+    const body: any = {};
+    if (data.additional_attributes && Object.keys(data.additional_attributes).length > 0) {
+      body.additional_attributes = data.additional_attributes;
+    }
+    if (Object.keys(body).length === 0) return { ok: true };
+
+    const response = await this.request(
+      `/api/v1/accounts/${this.config.accountId}/conversations/${parseInt(String(conversationId))}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    );
+    return response.conversation || response.payload?.conversation || response;
+  }
+
   async updateContact(contactId: string | number, data: { name?: string; phone_number?: string }): Promise<any> {
     const body: any = {};
     if (typeof data.name === "string" && data.name.trim().length > 0) body.name = data.name.trim();
@@ -192,6 +212,27 @@ export class ChatwootAPI {
       const existing = await findExistingByContact();
       if (existing) {
         console.log(`[Chatwoot Debug] Returning existing conversation: ${existing.id}`);
+        // Optionally enrich existing conversation with source_id for future lookups
+        try {
+          const allowEnrich = (process.env.CHATWOOT_ENRICH_CONVERSATION_ATTRIBUTES || 'true') === 'true';
+          const hasSourceId =
+            existing?.additional_attributes?.source_id ||
+            existing?.source_id ||
+            existing?.contact_inbox?.source_id;
+          if (allowEnrich && data.source_id && !hasSourceId) {
+            console.log(
+              `[Chatwoot Debug] Enriching conversation ${existing.id} with additional_attributes.source_id=${data.source_id}`
+            );
+            await this.updateConversation(existing.id, {
+              additional_attributes: {
+                ...(existing.additional_attributes || {}),
+                source_id: data.source_id,
+              },
+            });
+          }
+        } catch (enrichErr) {
+          console.log(`[Chatwoot Debug] Enrich failed for conversation ${existing.id}:`, enrichErr);
+        }
         return existing;
       }
       console.log(`[Chatwoot Debug] No existing conversation found, will create new one`);
