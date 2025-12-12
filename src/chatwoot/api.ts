@@ -238,9 +238,9 @@ export class ChatwootAPI {
       if (createErr.status === 422 && isSourceIdError) {
         console.log(`[Chatwoot Debug] source_id conflict detected, searching for existing conversation by source_id`);
         try {
-          // List all conversations and search for one with this source_id
+          // List all conversations (without inbox filter) to find the one with this source_id
           const allConversations = await this.request(
-            `/api/v1/accounts/${this.config.accountId}/conversations?inbox_id=${inboxIdNum}`
+            `/api/v1/accounts/${this.config.accountId}/conversations`
           );
           let convList: any[] = [];
           if (Array.isArray(allConversations?.data?.payload)) {
@@ -254,6 +254,7 @@ export class ChatwootAPI {
             console.log(`[Chatwoot Debug] Found existing conversation by source_id:`, existing.id);
             return existing;
           }
+          console.log(`[Chatwoot Debug] No conversation found with source_id=${data.source_id}, searched ${convList.length} conversations`);
         } catch (searchErr) {
           console.log(`[Chatwoot Debug] Failed to search for existing conversation:`, searchErr);
         }
