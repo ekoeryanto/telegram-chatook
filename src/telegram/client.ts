@@ -33,8 +33,17 @@ export async function startTelegram(logger: Logger, chatwoot?: ChatwootAPI): Pro
     try {
       const message = event.message;
 
-      // Only handle text messages from private chats
+      // Only handle text messages
       if (!message?.text || !message.peerId) {
+        return;
+      }
+
+      // Check if message is from a group/channel
+      const isGroup = message.isGroup || message.isChannel;
+      const ignoreGroups = process.env.CHATWOOT_IGNORE_GROUP === 'true';
+
+      if (isGroup && ignoreGroups) {
+        logger.debug({ peerId: message.peerId }, "Skipping group/channel message (CHATWOOT_IGNORE_GROUP=true)");
         return;
       }
 
@@ -52,6 +61,7 @@ export async function startTelegram(logger: Logger, chatwoot?: ChatwootAPI): Pro
           username,
           firstName,
           lastName,
+          isGroup,
           text: text.substring(0, 100),
         },
         "Telegram message received"
