@@ -15,10 +15,11 @@ export class ChatwootAPI {
     };
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request(endpoint: string, options: RequestInit = {}, customTimeoutMs?: number) {
     const url = `${this.config.baseUrl}${endpoint}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+    const timeoutMs = typeof customTimeoutMs === "number" ? customTimeoutMs : this.config.timeout;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, {
@@ -295,9 +296,10 @@ export class ChatwootAPI {
 
         try {
           // Paginate through conversations to find the matching source_id (include closed conversations)
+          const extendedTimeout = (this.config.timeout || 10000) * 3;
           for (let page = 1; page <= 5; page++) {
             const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?status=all&page=${page}`;
-            const list = await this.request(endpoint);
+            const list = await this.request(endpoint, {}, extendedTimeout);
             const convList = parseConversations(list);
             console.log(
               `[Chatwoot Debug] Source search page=${page} parsed ${convList.length} conversations (looking for ${data.source_id})`
@@ -312,7 +314,7 @@ export class ChatwootAPI {
           console.log(`[Chatwoot Debug] Starting deep scan of conversation details for source_id lookup`);
           for (let page = 1; page <= 5; page++) {
             const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?status=all&page=${page}`;
-            const list = await this.request(endpoint);
+            const list = await this.request(endpoint, {}, extendedTimeout);
             const convList = parseConversations(list);
             for (const c of convList) {
               try {
@@ -336,7 +338,9 @@ export class ChatwootAPI {
           // Fallback: try conversations filtered by contact to reduce page scanning
           try {
             const byContact = await this.request(
-              `/api/v1/accounts/${this.config.accountId}/conversations?contact_id=${contactIdNum}&status=all`
+              `/api/v1/accounts/${this.config.accountId}/conversations?contact_id=${contactIdNum}&status=all`,
+              {},
+              extendedTimeout
             );
             const convList = parseConversations(byContact);
             console.log(

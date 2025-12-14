@@ -118,10 +118,14 @@ async function forwardToCharwoot(
 
     // Create or get contact
     logger.info("Creating contact...");
+    // Only send phone if it is E.164 (starts with +)
+    const sanitizedPhone = (phone || "").trim();
+    const phoneToSend = sanitizedPhone.startsWith("+") ? sanitizedPhone : undefined;
+
     const contact = await chatwoot.createContact({
       identifier: `telegram_${senderId}`,
       name: fullName,
-      phone_number: phone || undefined,
+      phone_number: phoneToSend,
     });
     logger.info({ contactId: contact.id }, "Contact created/found in Chatwoot");
     const contactId = contact?.id || contact?.contact_id || contact?.contact?.id;
