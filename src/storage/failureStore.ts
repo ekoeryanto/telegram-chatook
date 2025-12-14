@@ -47,6 +47,9 @@ export async function recordFailedMessage(entry: FailedMessageRecord): Promise<v
         id, created_at, sender_id, username, first_name, last_name, phone, message, error, source_id, contact_id, inbox_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
+
+    // Helpful index for FIFO retrieval
+    db.run(`CREATE INDEX IF NOT EXISTS idx_failed_messages_created_at ON failed_messages(created_at)`);
     stmt.run(
       id,
       createdAt,
@@ -64,4 +67,35 @@ export async function recordFailedMessage(entry: FailedMessageRecord): Promise<v
   } catch (err) {
     console.warn("[LocalFailureStore] Failed to record failed message", err);
   }
+}
+
+// Fetch next failed message in FIFO order (oldest first)
+export function fetchNextFailedMessage(): FailedMessageRecord & { id: string } | undefined {
+  const stmt = db.prepare(
+    `SELECT id, created_at, sender_id, username, first_name, last_name, phone, message, error, source_id, contact_id, inbox_id
+     FROM failed_messages
+     ORDER BY created_at ASC
+     LIMIT 1`
+  );
+  const row = stmt.get();
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    senderId: row.sender_id || undefined,
+    username: row.username || undefined,
+    firstName: row.first_name || undefined,
+    lastName: row.last_name || undefined,
+    phone: row.phone || undefined,
+    message: row.message || undefined,
+    error: row.error || undefined,
+    sourceId: row.source_id || undefined,
+    contactId: row.contact_id || undefined,
+    inboxId: row.inbox_id || undefined,
+  };
+}
+
+// Delete a failed message by id (after successful replay)
+export function deleteFailedMessage(id: string): void {
+  const stmt = db.prepare(`DELETE FROM failed_messages WHERE id = ?`);
+  stmt.run(id);
 }
