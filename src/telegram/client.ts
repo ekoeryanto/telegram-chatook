@@ -3,6 +3,7 @@ import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
 import type { Logger } from "pino";
 import { ChatwootAPI } from "../chatwoot/api.js";
+import { recordFailedMessage } from "../storage/failureStore.js";
 
 export interface TelegramService {
   client: TelegramClient;
@@ -191,6 +192,18 @@ async function forwardToCharwoot(
       },
       "❌ Failed to forward message to Chatwoot"
     );
+    // Persist failure locally so it can be inspected/replayed later
+    recordFailedMessage({
+      senderId,
+      username,
+      firstName,
+      lastName,
+      phone,
+      message: text,
+      error: error?.message,
+      sourceId: `telegram_${senderId}`,
+      inboxId: inboxId,
+    }).catch((storeErr) => logger.warn({ storeErr }, "Failed to persist failed message locally"));
     throw error;
   }
 }
