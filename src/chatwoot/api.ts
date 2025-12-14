@@ -190,10 +190,10 @@ export class ChatwootAPI {
     };
 
     const findExistingByContact = async (): Promise<any | undefined> => {
-      // Pagination to cover closed conversations; stop after 5 pages or when empty page is returned
+      // Only search for open conversations; closed/resolved conversations should not be reused
       for (let page = 1; page <= 5; page++) {
-        const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?inbox_id=${inboxIdNum}&status=all&page=${page}`;
-        console.log(`[Chatwoot Debug] Fetching conversations page=${page} for inbox_id=${inboxIdNum}`);
+        const endpoint = `/api/v1/accounts/${this.config.accountId}/conversations?inbox_id=${inboxIdNum}&status=open&page=${page}`;
+        console.log(`[Chatwoot Debug] Fetching conversations page=${page} for inbox_id=${inboxIdNum} (status=open)`);
         const list = await this.request(endpoint);
         const conversations = parseConversations(list);
         console.log(`[Chatwoot Debug] Page=${page} parsed ${conversations.length} conversations`);
