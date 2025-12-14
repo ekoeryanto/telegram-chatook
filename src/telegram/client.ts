@@ -55,6 +55,15 @@ export async function startTelegram(logger: Logger, chatwoot?: ChatwootAPI): Pro
       const phone = sender?.phone || "";
       const text = message.text;
 
+      // Check if sender is a bot
+      const isBot = sender?.bot === true;
+      const ignoreBots = process.env.CHATWOOT_IGNORE_BOTS === 'true';
+
+      if (isBot && ignoreBots) {
+        logger.debug({ senderId, username }, "Skipping bot message (CHATWOOT_IGNORE_BOTS=true)");
+        return;
+      }
+
       logger.info(
         {
           senderId,
@@ -62,6 +71,7 @@ export async function startTelegram(logger: Logger, chatwoot?: ChatwootAPI): Pro
           firstName,
           lastName,
           isGroup,
+          isBot,
           text: text.substring(0, 100),
         },
         "Telegram message received"
